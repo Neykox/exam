@@ -36,50 +36,48 @@ int get_max(t_client *client, int max)
 	return max + 1;
 }
 
-void send_all(t_client *client, char *msg, int fd)
+void send_all(t_client *client, char *msg, int lenght, int fd)
 {
 	while (client)
 	{
 		if (client->fd != fd)
-			send(client->fd, msg, strlen(msg), 0);
-		// write(client->fd, msg, strlen(msg));
+			send(client->fd, msg, lenght, 0);
 		client = client->next;
 	}
 }
 
 int main(int argc, char **argv) {
-	argc++;
-	int sockfd;
-	struct sockaddr_in servaddr; 
 
-	// socket create and verification 
-	sockfd = socket(AF_INET, SOCK_STREAM, 0); 
-	if (sockfd == -1) { 
-		printf("socket creation failed...\n"); 
+	if (argc != 2){ 
+		printf("Wrong number of args\n"); 
 		exit(1);
 	}
 
-	bzero(&servaddr, sizeof(servaddr)); 
-	// assign IP, PORT 
+	int sockfd;
+	struct sockaddr_in servaddr; 
+
+	sockfd = socket(AF_INET, SOCK_STREAM, 0); 
+	if (sockfd == -1)
+		exit(1);
+
+	bzero(&servaddr, sizeof(servaddr));
 	servaddr.sin_family = AF_INET; 
-	servaddr.sin_addr.s_addr = htonl(2130706433); //127.0.0.1
+	servaddr.sin_addr.s_addr = htonl(2130706433);
 	servaddr.sin_port = htons(atoi(argv[1])); 
   
-	// Binding newly created socket to given IP and verification 
-	if ((bind(sockfd, (const struct sockaddr *)&servaddr, sizeof(servaddr))) != 0) { 
-		printf("socket bind failed...\n"); 
-		exit(0); 
-	}
+	if ((bind(sockfd, (const struct sockaddr *)&servaddr, sizeof(servaddr))) != 0)
+		exit(1); 
 
-	if (listen(sockfd, 10) != 0) {
-		printf("cannot listen\n"); 
-		exit(0); 
-	}
+	if (listen(sockfd, 10) != 0) 
+		exit(1);
+
+
+
 
 	fd_set read;
 	char msg[200];
 	char final[400];
-	int client_num = 0;
+	int ids = 0;
 	t_client *client = NULL;
 	struct timeval tv;
 	tv.tv_sec = 0;
@@ -95,14 +93,18 @@ int main(int argc, char **argv) {
 			FD_SET(read_set->fd, &read);
 			read_set = read_set->next;
 		}
-		if (select(get_max(client, sockfd), &read, NULL, NULL, &tv) > 0)
+		int ret = select(get_max(client, sockfd), &read, NULL, NULL, &tv);
+		if (ret < 0)
+			exit(1);
+
+		if (ret > 0)
 		{
 			if (FD_ISSET(sockfd, &read))
 			{
 				int new_fd = accept(sockfd, NULL, NULL);
 				if (new_fd == -1)
 					exit(1);
-				t_client *new = _new(new_fd, client_num);
+				t_client *new = _new(new_fd, ids);
 				if (client == NULL)
 					client = new;
 				else
@@ -112,11 +114,12 @@ int main(int argc, char **argv) {
 					start = start->next;
 					start->next = new;
 				}
-				sprintf(&msg[0], "server: client %d just arrived\n", client_num);
-				send_all(client, &msg[0], new_fd);
-				client_num++;
+				sprintf(&msg[0], "server: client %d just arrived\n", ids);
+				send_all(client, &msg[0], strlen(&msg[0]), new_fd);
+				ids++;
+				ret--;
 			}
-			else
+			if (ret > 0)
 			{
 				t_client *tmp = client;
 				while (tmp)
@@ -126,11 +129,11 @@ int main(int argc, char **argv) {
 					{
 						int bytes = recv(tmp->fd, &msg[0], 199, 0);
 						if (bytes < 0)
-							exit(0);
+							exit(1);
 						if (bytes == 0)
 						{
 							sprintf(&msg[0], "server: client %d just left\n", tmp->num);
-							send_all(client, &msg[0], tmp->fd);
+							send_all(client, &msg[0], strlen(&msg[0]), tmp->fd);
 
 							t_client *prev = client;
 							if (prev == tmp)
@@ -149,19 +152,22 @@ int main(int argc, char **argv) {
 
 							tmp = prev;
 							skip = 1;
+							ret--;
 						}
 						else
 						{
 							msg[bytes] = '\0';
 							int f = sprintf(&final[0], "client %d: ", tmp->num);
 							int i = 0;
-							while (msg[i])
+							int no_n = 0;
+							while (i < bytes)
 							{
 								final[f] = msg[i];
-								if (msg[i] == '\n' && msg[i + 1] != '\0')
+								if (msg[i] == '\n')
 								{
+									no_n = 1;
 									final[f + 1] = '\0';
-									send_all(client, &final[0], tmp->fd);
+									send_all(client, &final[0], f + 1, tmp->fd);
 									f = sprintf(&final[0], "client %d: ", tmp->num);
 								}
 								else
@@ -169,7 +175,8 @@ int main(int argc, char **argv) {
 								i++;
 							}
 							final[f] = '\0';
-							send_all(client, &final[0], tmp->fd);
+							if (no_n == 0)
+								send_all(client, &final[0], f, tmp->fd);
 						}
 					}
 					if (skip == 0)
