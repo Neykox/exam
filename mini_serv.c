@@ -75,8 +75,8 @@ int main(int argc, char **argv) {
 
 
 	fd_set read;
-	char msg[200];
-	char final[400];
+	char msg[210];
+	char final[4000];
 	int ids = 0;
 	t_client *client = NULL;
 	struct timeval tv;
@@ -122,7 +122,7 @@ int main(int argc, char **argv) {
 			if (ret > 0)
 			{
 				t_client *tmp = client;
-				while (tmp)
+				while (tmp && ret > 0)
 				{
 					int skip = 0;
 					if (FD_ISSET(tmp->fd, &read))
@@ -152,7 +152,6 @@ int main(int argc, char **argv) {
 
 							tmp = prev;
 							skip = 1;
-							ret--;
 						}
 						else
 						{
@@ -178,6 +177,7 @@ int main(int argc, char **argv) {
 							if (no_n == 0)
 								send_all(client, &final[0], f, tmp->fd);
 						}
+						ret--;
 					}
 					if (skip == 0)
 						tmp = tmp->next;
